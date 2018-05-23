@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-export ICP_VERSION=2.1.0.2
+export ICP_VERSION=2.1.0.3
 
 #-------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------
@@ -761,7 +761,7 @@ if [[ $DO_ISTIO == "y" ||  $DO_ISTIO == "Y" ]]; then
 
   kubectl -s 127.0.0.1:8888 -n istio-system delete -f ~/INSTALL/ISTIO/ingress.yaml
   kubectl -s 127.0.0.1:8888 -n istio-system apply -f ~/INSTALL/ISTIO/ingress.yaml
-  
+
 
 cat <<\EOR >~/INSTALL/ISTIO/istio-0.7.1/routingrule_100_0.yaml
   apiVersion: config.istio.io/v1alpha2
@@ -915,6 +915,26 @@ if [[ $DO_AM == "y" ||  $DO_AM == "Y" ]]; then
   kubectl -s 127.0.0.1:8888 -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
 else
   echo "Alert Manager not configured"
+fi
+
+EOM
+
+
+
+cat <<\EOM >>~/INSTALL/3_postInstall.sh
+read -p "Install and configure CALICO Commandline? [y,N]" DO_CAL
+if [[ $DO_CAL == "y" ||  $DO_CAL == "Y" ]]; then
+  # Create ALERTS
+  echo "Download CALICO Commandline"
+  docker run -v /root:/data --entrypoint=cp ibmcom/calico-ctl:v2.0.2 /calicoctl /data
+  sudo cp /root/calicoctl /usr/local/bin/
+  export ETCD_CERT_FILE=/etc/cfc/conf/etcd/client.pem
+  export ETCD_CA_CERT_FILE=/etc/cfc/conf/etcd/ca.pem
+  export ETCD_KEY_FILE=/etc/cfc/conf/etcd/client-key.pem
+  export ETCD_ENDPOINTS=https://mycluster.icp:4001
+
+else
+  echo "CALICO Commandline not configured"
 fi
 
 EOM
