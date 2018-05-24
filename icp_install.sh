@@ -34,7 +34,28 @@ echo "CREATE PRE INSTALL SCRIPT"
 cat <<EOA >~/INSTALL/1_preInstall.sh
 #!/bin/bash
 
+
+# Install Prerequisites
+echo "Installing Prerequisites";
+sudo apt-get install apt-transport-https ca-certificates curl software-properties-common python-minimal
+
+sudo sysctl -w vm.max_map_count=262144
+
+sudo cat <<EOB >>/etc/sysctl.conf
+  vm.max_map_count=262144
+EOB
+
+#curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+#sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+#sudo apt-get update
+#sudo apt-get install docker-ce=17.09.0~ce-0~ubuntu
+
+
+
+
+
 # Install Command Line Tools
+echo "Installing Tools";
 sudo apt-get update
 sudo ufw disable
 sudo apt install python
@@ -46,7 +67,7 @@ sudo apt-get --yes --force-yes install unzip
 sudo apt-get --yes --force-yes install iftop
 
 echo "Creating SSH Key";
-ssh-keygen -y -b 4096 -t rsa -f ~/.ssh/master.id_rsa -N ""
+ssh-keygen -b 4096 -t rsa -f ~/.ssh/master.id_rsa -N ""
 cat ~/.ssh/master.id_rsa.pub | sudo tee -a ~/.ssh/authorized_keys
 ssh-copy-id -i ~/.ssh/master.id_rsa.pub root@$MY_IP
 
@@ -133,11 +154,12 @@ cat <<EOM >~/INSTALL/3_postInstall.sh
 
 # Install Command Line Tools
 docker run -e LICENSE=accept --net=host -v /usr/local/bin:/data ibmcom/icp-inception:$ICP_VERSION cp /usr/local/bin/kubectl /data
-wget https://mycluster.icp:8443/helm-api/cli/linux-amd64/helm --no-check-certificate
-sudo chmod +x helm
-sudo mv helm /usr/local/bin/
+curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get | sudo bash
 sudo helm init --client-only
 
+#INIT KUBECTL
+mkdir ~/.kube
+cp /var/lib/kubelet/kubectl-config ~/.kube/config
 
 EOM
 
@@ -149,7 +171,7 @@ echo "    BASHRC"
 cat <<\EOM >>~/.bashrc
 
 #Insecure kubectl
-alias kubectl_sys_insecure='kubectl -s 127.0.0.1:8888 -n kube-system'
+alias kubectl_sys_insecure='kubectl -n kube-system'
 alias kubectl_insecure='kubectl -s 127.0.0.1:8888'
 EOM
 
@@ -577,6 +599,66 @@ spec:
   nfs:
     server: $MY_IP
     path: /storage/pv0002
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-mongo-pv
+  labels:
+    type: cam-mongo
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_db
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-bpd-appdata-pv
+  labels:
+    type: cam-bpd-appdata
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_bpd
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-terraform-pv
+  labels:
+    type: cam-terraform
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes:
+    -  ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_terraform
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-logs-pv
+  labels:
+    type: cam-logs
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    -  ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_logs  
 EOM
 
 
@@ -613,6 +695,10 @@ if [[ $DO_PV == "y" ||  $DO_PV == "Y" ]]; then
   sudo mkdir -p /storage/etcd-stor
   sudo mkdir -p /storage/pv0001
   sudo mkdir -p /storage/pv0002
+  sudo mkdir -p /storage/CAM_db
+  sudo mkdir -p /storage/CAM_logs
+  sudo mkdir -p /storage/CAM_terraform
+  sudo mkdir -p /storage/CAM_bpd
 
   sudo chmod -R 777 /storage
   sudo chown -R nobody:nogroup /storage
@@ -626,7 +712,7 @@ if [[ $DO_PV == "y" ||  $DO_PV == "Y" ]]; then
 
   # Create PersistentVolumes
   echo "Create PersistentVolumes"
-  kubectl -s 127.0.0.1:8888 apply -f ~/INSTALL/KUBE/PV/pv.yaml
+  kubectl apply -f ~/INSTALL/KUBE/PV/pv.yaml
 else
   echo "PersistentVolumes not configured"
 fi
@@ -757,10 +843,10 @@ if [[ $DO_ISTIO == "y" ||  $DO_ISTIO == "Y" ]]; then
 
   cd ~/INSTALL/ISTIO/istio-0.7.1
 
-  kubectl -s 127.0.0.1:8888 apply -f ./install/kubernetes/istio.yaml
+  kubectl apply -f ./install/kubernetes/istio.yaml
 
-  kubectl -s 127.0.0.1:8888 -n istio-system delete -f ~/INSTALL/ISTIO/ingress.yaml
-  kubectl -s 127.0.0.1:8888 -n istio-system apply -f ~/INSTALL/ISTIO/ingress.yaml
+  kubectl -n istio-system delete -f ~/INSTALL/ISTIO/ingress.yaml
+  kubectl -n istio-system apply -f ~/INSTALL/ISTIO/ingress.yaml
 
 
 cat <<\EOR >~/INSTALL/ISTIO/istio-0.7.1/routingrule_100_0.yaml
@@ -831,15 +917,15 @@ if [[ $DO_ISTIOSC == "y" ||  $DO_ISTIOSC == "Y" ]]; then
       --namespace istio-system \
       --secret sidecar-injector-certs
 
-  kubectl -s 127.0.0.1:8888 apply -f install/kubernetes/istio-sidecar-injector-configmap-release.yaml
+  kubectl apply -f install/kubernetes/istio-sidecar-injector-configmap-release.yaml
 
   cat install/kubernetes/istio-sidecar-injector.yaml | \
        ./install/kubernetes/webhook-patch-ca-bundle.sh > \
        install/kubernetes/istio-sidecar-injector-with-ca-bundle.yaml
 
-  kubectl -s 127.0.0.1:8888 apply -f install/kubernetes/istio-sidecar-injector-with-ca-bundle.yaml
-  kubectl -s 127.0.0.1:8888 label namespace default istio-injection=enabled
-  kubectl -s 127.0.0.1:8888 get namespace -L istio-injection
+  kubectl apply -f install/kubernetes/istio-sidecar-injector-with-ca-bundle.yaml
+  kubectl label namespace default istio-injection=enabled
+  kubectl get namespace -L istio-injection
 else
   echo "ISTIO Sidecar Injection not configured"
 fi
@@ -908,11 +994,11 @@ if [[ $DO_AM == "y" ||  $DO_AM == "Y" ]]; then
   # Create ALERTS
   echo "Create ALERTS"
 
-  kubectl -s 127.0.0.1:8888 -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
-  kubectl -s 127.0.0.1:8888 -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
+  kubectl -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
+  kubectl -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
 
-  kubectl -s 127.0.0.1:8888 -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
-  kubectl -s 127.0.0.1:8888 -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
+  kubectl -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
+  kubectl -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
 else
   echo "Alert Manager not configured"
 fi
@@ -1008,6 +1094,27 @@ sudo docker pull istio/mixer:0.7.1
 sudo docker pull istio/examples-helloworld-v1
 sudo docker pull istio/examples-helloworld-v2
 
+
+sudo docker pull store/ibmcorp/icam-bpd-cds:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-bpd-mariadb:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-bpd-ui:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-broker:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-iaas:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-mongo:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-orchestration:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-portal-ui:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-provider-helm:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-provider-terraform:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-proxy:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-redis:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-service-composer-api:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-service-composer-ui:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-tenant-api:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-basic:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-connections:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-instances:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-templates:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-busybox:2.1.0.2-x86_64
 
 
 

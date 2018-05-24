@@ -53,7 +53,7 @@ ssh-copy-id -i ~/.ssh/master.id_rsa.pub root@$MY_IP
 
 echo "Loading ICP EE Docker Images into registry";
 echo "This may take 10-30 minutes depending on your system";
-tar xf ibm-cloud-private-x86_64-$ICP_VERSION.tar.gz -O | sudo docker load
+tar xf ~/ibm-cloud-private-x86_64-$ICP_VERSION.tar.gz -O | sudo docker load
 
 echo "Creating Cluster Directory";
 cd ~/INSTALL
@@ -134,12 +134,13 @@ cat <<EOM >~/INSTALL/3_postInstall.sh
 #!/bin/bash
 
 # Install Command Line Tools
-docker run -e LICENSE=accept --net=host -v /usr/local/bin:/data ibmcom/icp-inception:$ICP_VERSION cp /usr/local/bin/kubectl /data
-wget https://mycluster.icp:8443/helm-api/cli/linux-amd64/helm --no-check-certificate
-sudo chmod +x helm
-sudo mv helm /usr/local/bin/
+docker run -e LICENSE=accept --net=host -v /usr/local/bin:/data ibmcom/icp-inception:$ICP_VERSION-ee cp /usr/local/bin/kubectl /data
+curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get | sudo bash
 sudo helm init --client-only
 
+#INIT KUBECTL
+mkdir ~/.kube
+cp /var/lib/kubelet/kubectl-config ~/.kube/config
 
 EOM
 
@@ -151,7 +152,7 @@ echo "    BASHRC"
 cat <<\EOM >>~/.bashrc
 
 #Insecure kubectl
-alias kubectl_sys_insecure='kubectl -s 127.0.0.1:8888 -n kube-system'
+alias kubectl_sys_insecure='kubectl -n kube-system'
 alias kubectl_insecure='kubectl -s 127.0.0.1:8888'
 EOM
 
@@ -628,7 +629,7 @@ if [[ $DO_PV == "y" ||  $DO_PV == "Y" ]]; then
 
   # Create PersistentVolumes
   echo "Create PersistentVolumes"
-  kubectl -s 127.0.0.1:8888 apply -f ~/INSTALL/KUBE/PV/pv.yaml
+  kubectl apply -f ~/INSTALL/KUBE/PV/pv.yaml
 else
   echo "PersistentVolumes not configured"
 fi
@@ -759,10 +760,10 @@ if [[ $DO_ISTIO == "y" ||  $DO_ISTIO == "Y" ]]; then
 
   cd ~/INSTALL/ISTIO/istio-0.7.1
 
-  kubectl -s 127.0.0.1:8888 apply -f ./install/kubernetes/istio.yaml
+  kubectl apply -f ./install/kubernetes/istio.yaml
 
-  kubectl -s 127.0.0.1:8888 -n istio-system delete -f ~/INSTALL/ISTIO/ingress.yaml
-  kubectl -s 127.0.0.1:8888 -n istio-system apply -f ~/INSTALL/ISTIO/ingress.yaml
+  kubectl -n istio-system delete -f ~/INSTALL/ISTIO/ingress.yaml
+  kubectl -n istio-system apply -f ~/INSTALL/ISTIO/ingress.yaml
 
 
 cat <<\EOR >~/INSTALL/ISTIO/istio-0.7.1/routingrule_100_0.yaml
@@ -833,15 +834,15 @@ if [[ $DO_ISTIOSC == "y" ||  $DO_ISTIOSC == "Y" ]]; then
       --namespace istio-system \
       --secret sidecar-injector-certs
 
-  kubectl -s 127.0.0.1:8888 apply -f install/kubernetes/istio-sidecar-injector-configmap-release.yaml
+  kubectl apply -f install/kubernetes/istio-sidecar-injector-configmap-release.yaml
 
   cat install/kubernetes/istio-sidecar-injector.yaml | \
        ./install/kubernetes/webhook-patch-ca-bundle.sh > \
        install/kubernetes/istio-sidecar-injector-with-ca-bundle.yaml
 
-  kubectl -s 127.0.0.1:8888 apply -f install/kubernetes/istio-sidecar-injector-with-ca-bundle.yaml
-  kubectl -s 127.0.0.1:8888 label namespace default istio-injection=enabled
-  kubectl -s 127.0.0.1:8888 get namespace -L istio-injection
+  kubectl apply -f install/kubernetes/istio-sidecar-injector-with-ca-bundle.yaml
+  kubectl label namespace default istio-injection=enabled
+  kubectl get namespace -L istio-injection
 else
   echo "ISTIO Sidecar Injection not configured"
 fi
@@ -910,11 +911,11 @@ if [[ $DO_AM == "y" ||  $DO_AM == "Y" ]]; then
   # Create ALERTS
   echo "Create ALERTS"
 
-  kubectl -s 127.0.0.1:8888 -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
-  kubectl -s 127.0.0.1:8888 -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
+  kubectl -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
+  kubectl -n kube-system delete -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
 
-  kubectl -s 127.0.0.1:8888 -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
-  kubectl -s 127.0.0.1:8888 -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
+  kubectl -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/alert-rules_config.yaml
+  kubectl -n kube-system apply -f ~/INSTALL/KUBE/CONFIG/monitoring-prometheus-alertmanager_config.yaml
 else
   echo "Alert Manager not configured"
 fi
@@ -926,7 +927,7 @@ EOM
 cat <<\EOM >>~/INSTALL/3_postInstall.sh
 read -p "Install and configure CALICO Commandline? [y,N]" DO_CAL
 if [[ $DO_CAL == "y" ||  $DO_CAL == "Y" ]]; then
-  # Create ALERTS
+  # Create CALICO Commandline
   echo "Download CALICO Commandline"
   docker run -v /root:/data --entrypoint=cp ibmcom/calico-ctl:v2.0.2 /calicoctl /data
   sudo cp /root/calicoctl /usr/local/bin/
@@ -940,6 +941,29 @@ else
 fi
 
 EOM
+
+
+
+cat <<\EOM >>~/INSTALL/3_postInstall.sh
+read -p "Install and configure Liberty Demo? [y,N]" DO_LIB
+if [[ $DO_LIB == "y" ||  $DO_LIB == "Y" ]]; then
+  # Create Liberty Demo
+  echo "Download Liberty Demo"
+  cd ~/INSTALL/
+  git clone https://github.com/niklaushirt/libertysimple.git
+  cd ~/INSTALL/libertysimple
+  docker build -t libertysimple:1.0.0 docker_100
+  docker build -t libertysimple:1.1.0 docker_110
+  docker build -t libertysimple:1.2.0 docker_120
+  docker build -t libertysimple:1.3.0 docker_130
+else
+  echo "Liberty Demo not configured"
+fi
+
+EOM
+
+
+
 
 
 #-------------------------------------------------------------------------------------------
