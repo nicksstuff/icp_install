@@ -34,7 +34,28 @@ echo "CREATE PRE INSTALL SCRIPT"
 cat <<EOA >~/INSTALL/1_preInstall.sh
 #!/bin/bash
 
+
+# Install Prerequisites
+echo "Installing Prerequisites";
+sudo apt-get install apt-transport-https ca-certificates curl software-properties-common python-minimal
+
+sudo sysctl -w vm.max_map_count=262144
+
+sudo cat <<EOB >>/etc/sysctl.conf
+  vm.max_map_count=262144
+EOB
+
+#curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+#sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+#sudo apt-get update
+#sudo apt-get install docker-ce=17.09.0~ce-0~ubuntu
+
+
+
+
+
 # Install Command Line Tools
+echo "Installing Tools";
 sudo apt-get update
 sudo ufw disable
 sudo apt install python
@@ -60,6 +81,7 @@ cd ~/INSTALL
 sudo docker run -e LICENSE=accept -v "$(pwd)/INSTALL":/data ibmcom/icp-inception:$ICP_VERSION-ee cp -r cluster /data
 sudo mkdir -p $(pwd)/INSTALL/cluster/images
 sudo mv ~/ibm-cloud-private-x86_64-$ICP_VERSION.tar.gz  $(pwd)/INSTALL/cluster/images/
+
 
 echo "Adapting Host IP";
 
@@ -105,7 +127,7 @@ echo "CREATE INSTALL SCRIPT"
 cat <<EOA >~/INSTALL/2_install.sh
 #!/bin/bash
 
-echo "Installing ICP CE";
+echo "Installing ICP EE";
 cd ~/INSTALL/cluster
 sudo docker run -e LICENSE=accept --net=host -t -v "$(pwd)/INSTALL/cluster":/installer/cluster ibmcom/icp-inception:$ICP_VERSION-ee install | sudo tee install.log
 
@@ -134,7 +156,7 @@ cat <<EOM >~/INSTALL/3_postInstall.sh
 #!/bin/bash
 
 # Install Command Line Tools
-docker run -e LICENSE=accept --net=host -v /usr/local/bin:/data ibmcom/icp-inception:$ICP_VERSION-ee cp /usr/local/bin/kubectl /data
+docker run -e LICENSE=accept --net=host -v /usr/local/bin:/data ibmcom/icp-inception:$ICP_VERSION cp /usr/local/bin/kubectl /data
 curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get | sudo bash
 sudo helm init --client-only
 
@@ -580,6 +602,66 @@ spec:
   nfs:
     server: $MY_IP
     path: /storage/pv0002
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-mongo-pv
+  labels:
+    type: cam-mongo
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_db
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-bpd-appdata-pv
+  labels:
+    type: cam-bpd-appdata
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_bpd
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-terraform-pv
+  labels:
+    type: cam-terraform
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes:
+    -  ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_terraform
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: cam-logs-pv
+  labels:
+    type: cam-logs
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    -  ReadWriteMany
+  nfs:
+    server: mycluster.icp
+    path: /storage/CAM_logs
 EOM
 
 
@@ -616,6 +698,10 @@ if [[ $DO_PV == "y" ||  $DO_PV == "Y" ]]; then
   sudo mkdir -p /storage/etcd-stor
   sudo mkdir -p /storage/pv0001
   sudo mkdir -p /storage/pv0002
+  sudo mkdir -p /storage/CAM_db
+  sudo mkdir -p /storage/CAM_logs
+  sudo mkdir -p /storage/CAM_terraform
+  sudo mkdir -p /storage/CAM_bpd
 
   sudo chmod -R 777 /storage
   sudo chown -R nobody:nogroup /storage
@@ -927,7 +1013,7 @@ EOM
 cat <<\EOM >>~/INSTALL/3_postInstall.sh
 read -p "Install and configure CALICO Commandline? [y,N]" DO_CAL
 if [[ $DO_CAL == "y" ||  $DO_CAL == "Y" ]]; then
-  # Create CALICO Commandline
+  # Create ALERTS
   echo "Download CALICO Commandline"
   docker run -v /root:/data --entrypoint=cp ibmcom/calico-ctl:v2.0.2 /calicoctl /data
   sudo cp /root/calicoctl /usr/local/bin/
@@ -941,29 +1027,6 @@ else
 fi
 
 EOM
-
-
-
-cat <<\EOM >>~/INSTALL/3_postInstall.sh
-read -p "Install and configure Liberty Demo? [y,N]" DO_LIB
-if [[ $DO_LIB == "y" ||  $DO_LIB == "Y" ]]; then
-  # Create Liberty Demo
-  echo "Download Liberty Demo"
-  cd ~/INSTALL/
-  git clone https://github.com/niklaushirt/libertysimple.git
-  cd ~/INSTALL/libertysimple
-  docker build -t libertysimple:1.0.0 docker_100
-  docker build -t libertysimple:1.1.0 docker_110
-  docker build -t libertysimple:1.2.0 docker_120
-  docker build -t libertysimple:1.3.0 docker_130
-else
-  echo "Liberty Demo not configured"
-fi
-
-EOM
-
-
-
 
 
 #-------------------------------------------------------------------------------------------
@@ -1034,6 +1097,27 @@ sudo docker pull istio/mixer:0.7.1
 sudo docker pull istio/examples-helloworld-v1
 sudo docker pull istio/examples-helloworld-v2
 
+
+sudo docker pull store/ibmcorp/icam-bpd-cds:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-bpd-mariadb:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-bpd-ui:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-broker:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-iaas:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-mongo:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-orchestration:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-portal-ui:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-provider-helm:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-provider-terraform:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-proxy:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-redis:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-service-composer-api:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-service-composer-ui:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-tenant-api:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-basic:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-connections:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-instances:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-ui-templates:2.1.0.2-x86_64
+sudo docker pull store/ibmcorp/icam-busybox:2.1.0.2-x86_64
 
 
 

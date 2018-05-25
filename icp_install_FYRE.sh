@@ -66,12 +66,6 @@ sudo apt-get --yes --force-yes install curl
 sudo apt-get --yes --force-yes install unzip
 sudo apt-get --yes --force-yes install iftop
 
-echo "Creating SSH Key";
-ssh-keygen -b 4096 -t rsa -f ~/.ssh/master.id_rsa -N ""
-cat ~/.ssh/master.id_rsa.pub | sudo tee -a ~/.ssh/authorized_keys
-ssh-copy-id -i ~/.ssh/master.id_rsa.pub root@$MY_IP
-
-
 echo "Downloading ICP CE Docker Image";
 sudo docker pull ibmcom/icp-inception:$ICP_VERSION
 
@@ -99,14 +93,11 @@ $MY_IP
 #$MY_IP
 EOM
 
-
+echo "Copy SSH Key";
 sudo mv hosts ~/INSTALL/cluster
-sudo cp ~/.ssh/master.id_rsa ~/INSTALL/cluster/ssh_key
+sudo cp ~/.ssh/id_rsa ~/INSTALL/cluster/ssh_key
 sudo chmod 400 ~/INSTALL/cluster/ssh_key
 
-echo "Copy SSH Key";
-sudo cp ~/.ssh/master.id_rsa ./cluster/ssh_key
-sudo chmod 400 ./cluster/ssh_key
 EOA
 
 sudo chmod +x ~/INSTALL/1_preInstall.sh
