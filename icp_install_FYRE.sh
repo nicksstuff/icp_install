@@ -66,6 +66,12 @@ sudo apt-get --yes --force-yes install curl
 sudo apt-get --yes --force-yes install unzip
 sudo apt-get --yes --force-yes install iftop
 
+#echo "Creating SSH Key";
+#ssh-keygen -b 4096 -t rsa -f ~/.ssh/master.id_rsa -N ""
+#cat ~/.ssh/master.id_rsa.pub | sudo tee -a ~/.ssh/authorized_keys
+#ssh-copy-id -i ~/.ssh/master.id_rsa.pub root@$MY_IP
+
+
 echo "Downloading ICP CE Docker Image";
 sudo docker pull ibmcom/icp-inception:$ICP_VERSION
 
@@ -158,6 +164,10 @@ sudo chmod +x ~/INSTALL/3_postInstall.sh
 
 echo "  -----------------------------------------------------------------------------------------------------------"
 echo "    BASHRC"
+
+sudo cp ~/.bashrc_old ~/.bashrc
+sudo cp ~/.bashrc ~/.bashrc_old
+
 
 cat <<\EOM >>~/.bashrc
 
@@ -600,6 +610,7 @@ metadata:
 spec:
   capacity:
     storage: 15Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     - ReadWriteMany
   nfs:
@@ -615,6 +626,7 @@ metadata:
 spec:
   capacity:
     storage: 20Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     - ReadWriteMany
   nfs:
@@ -630,6 +642,7 @@ metadata:
 spec:
   capacity:
     storage: 15Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     -  ReadWriteMany
   nfs:
@@ -645,6 +658,7 @@ metadata:
 spec:
   capacity:
     storage: 10Gi
+  persistentVolumeReclaimPolicy: Recycle
   accessModes:
     -  ReadWriteMany
   nfs:
@@ -719,69 +733,155 @@ echo "    ISTIO"
 
 cat <<\EOM >>~/.bashrc
 
-function istio_test()
+function istio_helloworld_test()
 {
 echo "TEST HELLOWORLD";
 for i in `seq 1 200000`; do curl http://$(hostname --ip-address):31461/hello; done
 }
 
-function istio_V1()
+function istio_helloworld_V1()
 {
 echo "Only V1";
-istioctl delete routerules helloworld-default --namespace default
-istioctl create -f ~/INSTALL/ISTIO/istio-0.7.1/routingrule_100_0.yaml
+istioctl delete virtualservice helloworld --namespace default
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/vs_100_0.yaml
 }
 
-function istio_BOTH()
+function istio_helloworld_BOTH()
 {
 echo "V1 and V2";
-istioctl delete routerules helloworld-default --namespace default
-istioctl create -f ~/INSTALL/ISTIO/istio-0.7.1/routingrule_50_50.yaml
+istioctl delete virtualservice helloworld --namespace default
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/vs_50_50.yaml
 }
 
 
-function istio_V2()
+function istio_helloworld_V2()
 {
 echo "Only V2";
-istioctl delete routerules helloworld-default --namespace default
-istioctl create -f ~/INSTALL/ISTIO/istio-0.7.1/routingrule_0_100.yaml
+istioctl delete virtualservice helloworld --namespace default
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/vs_0_100.yaml
 }
 
 
-function istio_remove_routingrule()
+function istio_helloworld_remove_routingrule()
 {
 echo "Remove Routing Rule";
-istioctl delete routerules helloworld-default --namespace default
+istioctl delete virtualservice helloworld --namespace default
 }
 
 
 function istio_helloworld()
 {
 echo "Starting Hello World";
-#kubectl apply -f ~/INSTALL/ISTIO/istio-0.7.1/samples/helloworld/helloworld.yaml
-kubectl create -f <(istioctl kube-inject -f ~/INSTALL/ISTIO/istio-0.7.1/samples/helloworld/helloworld.yaml)
+istioctl kube-inject -f ~/INSTALL/ISTIO/istio-0.8.0/samples/helloworld/helloworld.yaml -o ~/INSTALL/ISTIO/istio-0.8.0/samples/helloworld/helloworld-istio.yaml
+kubectl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/helloworld/helloworld-istio.yaml
 }
 
 
 function istio_helloworld_stop()
 {
 echo "Stopping Hello World";
-kubectl delete -f ~/INSTALL/ISTIO/istio-0.7.1/samples/helloworld/helloworld.yaml
+kubectl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/helloworld/helloworld-istio.yaml
+}
+
+
+
+
+
+
+function istio_bookinfo_test()
+{
+echo "TEST HELLOWORLD";
+for i in `seq 1 200000`; do curl http://$(hostname --ip-address):31461/productpage; done
+}
+
+
+function istio_bookinfo_V1()
+{
+echo "Only V1";
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-all-v1.yaml
+}
+
+
+function istio_bookinfo_jason()
+{
+echo "Only JASON on V3";
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+}
+
+
+function istio_bookinfo_BOTH()
+{
+echo "Only JASON on V3";
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-all-v1.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+
+}
+
+
+function istio_bookinfo_V3()
+{
+echo "Only V3";
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+}
+
+function istio_bookinfo_remove_routingrule()
+{
+echo "Reset Routing Rules";
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-all-v1.yaml
+}
+
+
+function istio_bookinfo()
+{
+echo "Starting Bookinfo";
+istioctl kube-inject -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/kube/bookinfo.yaml -o ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/kube/bookinfo-istio.yaml
+kubectl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/kube/bookinfo-istio.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/bookinfo-gateway.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-test-v2.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-50-v3.yaml
+istioctl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-reviews-v3.yaml
+istioctl create -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/routing/route-rule-all-v1.yaml
+}
+
+
+function istio_bookinfo_stop()
+{
+echo "Stopping Bookinfo";
+kubectl delete -f ~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/kube/bookinfo.yaml
+~/INSTALL/ISTIO/istio-0.8.0/samples/bookinfo/consul/cleanup.sh
 }
 EOM
 
-cat <<\EOM >>~/INSTALL/ISTIO/ingress.yaml
+cat <<\EOM >>~/INSTALL/ISTIO/ingress_gateway.json
 {
   "apiVersion": "v1",
   "kind": "Service",
   "metadata": {
-    "name": "istio-ingress",
+    "name": "istio-ingressgateway",
     "namespace": "istio-system",
     "labels": {
-      "istio": "ingress"
+      "chart": "ingressgateway-0.8.0",
+      "heritage": "Tiller",
+      "istio": "ingressgateway",
+      "release": "RELEASE-NAME"
     },
     "annotations": {
-      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"labels\":{\"istio\":\"ingress\"},\"name\":\"istio-ingress\",\"namespace\":\"istio-system\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80},{\"name\":\"https\",\"port\":443}],\"selector\":{\"istio\":\"ingress\"},\"type\":\"LoadBalancer\"}}\n"
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"labels\":{\"chart\":\"ingressgateway-0.8.0\",\"heritage\":\"Tiller\",\"istio\":\"ingressgateway\",\"release\":\"RELEASE-NAME\"},\"name\":\"istio-ingressgateway\",\"namespace\":\"istio-system\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"nodePort\":31380,\"port\":80},{\"name\":\"https\",\"nodePort\":31390,\"port\":443},{\"name\":\"tcp\",\"nodePort\":31400,\"port\":31400}],\"selector\":{\"istio\":\"ingressgateway\"},\"type\":\"LoadBalancer\"}}\n"
     }
   },
   "spec": {
@@ -798,18 +898,43 @@ cat <<\EOM >>~/INSTALL/ISTIO/ingress.yaml
         "protocol": "TCP",
         "port": 443,
         "targetPort": 443,
-        "nodePort": 31393
+        "nodePort": 31390
+      },
+      {
+        "name": "tcp",
+        "protocol": "TCP",
+        "port": 31400,
+        "targetPort": 31400,
+        "nodePort": 31400
       }
     ],
     "selector": {
-      "istio": "ingress"
+      "istio": "ingressgateway"
     },
-    "clusterIP": "10.0.0.91",
+    "clusterIP": "10.0.0.157",
     "type": "LoadBalancer",
     "sessionAffinity": "None",
     "externalTrafficPolicy": "Cluster"
   }
 }
+EOM
+
+
+
+cat <<\EOM >>~/INSTALL/ISTIO/helloworld_destinationrule.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: helloworld-destination
+spec:
+  host: helloworld
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
 EOM
 
 #source .bashrc
@@ -821,80 +946,91 @@ if [[ $DO_ISTIO == "y" ||  $DO_ISTIO == "Y" ]]; then
   echo "Install ISTIO"
   cd ~/INSTALL/ISTIO
 
-  wget https://github.com/istio/istio/releases/download/0.7.1/istio-0.7.1-linux.tar.gz
-  tar -xzf istio-0.7.1-linux.tar.gz
-  export PATH="$PATH:~/INSTALL/ISTIO/istio-0.7.1/bin"
+  wget https://github.com/istio/istio/releases/download/0.8.0/istio-0.8.0-linux.tar.gz
+  tar -xzf istio-0.8.0-linux.tar.gz
+  export PATH="$PATH:~/INSTALL/ISTIO/istio-0.8.0/bin"
 
-  cd istio-0.7.1
+  cd istio-0.8.0
 
   sudo cp bin/istioctl /usr/local/bin/
 
   # Create ISTIO
   echo "Create ISTIO Resources"
 
-  cd ~/INSTALL/ISTIO/istio-0.7.1
+  cd ~/INSTALL/ISTIO/istio-0.8.0
 
-  kubectl apply -f ./install/kubernetes/istio.yaml
+  kubectl apply -f ./install/kubernetes/istio-demo.yaml
 
-  kubectl -n istio-system delete -f ~/INSTALL/ISTIO/ingress.yaml
-  kubectl -n istio-system apply -f ~/INSTALL/ISTIO/ingress.yaml
+  kubectl -n istio-system delete -f ~/INSTALL/ISTIO/ingress_gateway.json
+  kubectl -n istio-system apply -f ~/INSTALL/ISTIO/ingress_gateway.json
 
+  istioctl create -f ~/INSTALL/ISTIO/helloworld_destinationrule.yaml
 
-cat <<\EOR >~/INSTALL/ISTIO/istio-0.7.1/routingrule_100_0.yaml
-  apiVersion: config.istio.io/v1alpha2
-  kind: RouteRule
-  metadata:
-    name: helloworld-default
-    namespace: default
-  spec:
-    destination:
-      name: helloworld
-    precedence: 1
+  istioctl get virtualservice
+
+cat <<\EOR >~/INSTALL/ISTIO/istio-0.8.0/vs_100_0.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: helloworld
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - helloworld-gateway
+  http:
+  - match:
+    - uri:
+        exact: /hello
     route:
-    - labels:
-        version: v1
-      weight: 100
-    - labels:
-        version: v2
-      weight: 0
+    - destination:
+        host: helloworld
+        subset: v1
 EOR
 
-cat <<\EOR >~/INSTALL/ISTIO/istio-0.7.1/routingrule_50_50.yaml
-  apiVersion: config.istio.io/v1alpha2
-  kind: RouteRule
-  metadata:
-    name: helloworld-default
-    namespace: default
-  spec:
-    destination:
-      name: helloworld
-    precedence: 1
+cat <<\EOR >~/INSTALL/ISTIO/istio-0.8.0/vs_50_50.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: helloworld
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - helloworld-gateway
+  http:
+  - match:
+    - uri:
+        exact: /hello
     route:
-    - labels:
-        version: v1
+    - destination:
+        host: helloworld
+        subset: v1
       weight: 50
-    - labels:
-        version: v2
+    - destination:
+        host: helloworld
+        subset: v2
       weight: 50
 EOR
 
-cat <<\EOR >~/INSTALL/ISTIO/istio-0.7.1/routingrule_0_100.yaml
-  apiVersion: config.istio.io/v1alpha2
-  kind: RouteRule
-  metadata:
-    name: helloworld-default
-    namespace: default
-  spec:
-    destination:
-      name: helloworld
-    precedence: 1
+cat <<\EOR >~/INSTALL/ISTIO/istio-0.8.0/vs_0_100.yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: helloworld
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - helloworld-gateway
+  http:
+  - match:
+    - uri:
+        exact: /hello
     route:
-    - labels:
-        version: v1
-      weight: 0
-    - labels:
-        version: v2
-      weight: 100
+    - destination:
+        host: helloworld
+        subset: v2
 EOR
 else
   echo "ISTIO not configured"
@@ -1034,6 +1170,111 @@ fi
 
 EOM
 
+cat <<\EOF >~/INSTALL/KUBE/CONFIG/privileged_policy.yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: privileged_policy
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+spec:
+  privileged: true
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+  - '*'
+  volumes:
+  - '*'
+  hostNetwork: true
+  hostPorts:
+  - min: 0
+    max: 65535
+  hostIPC: true
+  hostPID: true
+  runAsUser:
+    rule: 'RunAsAny'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'RunAsAny'
+  fsGroup:
+rule: 'RunAsAny'
+EOF
+
+cat <<\EOF >~/INSTALL/KUBE/CONFIG/restricted_policy.yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: restricted
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'docker/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName:  'docker/default'
+    apparmor.security.beta.kubernetes.io/defaultProfileName:  'runtime/default'
+spec:
+  privileged: false
+  # Required to prevent escalations to root.
+  allowPrivilegeEscalation: false
+  # This is redundant with non-root + disallow privilege escalation,
+  # but we can provide it for defense in depth.
+  requiredDropCapabilities:
+    - ALL
+  # Allow core volume types.
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    # Assume that persistentVolumes set up by the cluster admin are safe to use.
+    - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    # Require the container to run without root privileges.
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    # This policy assumes the nodes are using AppArmor rather than SELinux.
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      # Forbid adding the root group.
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      # Forbid adding the root group.
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: false
+EOF
+
+
+
+cat <<\EOM >>~/INSTALL/3_postInstall.sh
+read -p "Install and configure Demo Stuff? [y,N]" DO_STF
+if [[ $DO_STF == "y" ||  $DO_STF == "Y" ]]; then
+  # Create some Stuff
+  echo "Create some Stuff"
+  cd ~/INSTALL/
+  kubectl create secret docker-registry camsecret --docker-username=test --docker-password=abcd --docker-email=test@gmail.com -n services
+
+
+
+
+
+
+
+
+
+else
+  echo "Stuff not configured"
+fi
+
+EOM
+
 #-------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------
 # CREATE IMAGE PRELOAD
@@ -1093,12 +1334,15 @@ sudo docker pull citizenstig/httpbin
 
 
 
-sudo docker pull istio/istio-ca:0.7.1
-sudo docker pull istio/sidecar_initializer:0.7.1
-sudo docker pull istio/pilot:0.7.1
-sudo docker pull istio/proxy_debug:0.7.1
-sudo docker pull istio/proxy_init:0.7.1
-sudo docker pull istio/mixer:0.7.1
+sudo docker pull istio/grafana:0.8.0
+sudo docker pull istio/mixer:0.8.0
+sudo docker pull istio/servicegraph:0.8.0
+sudo docker pull istio/proxy_init:0.8.0
+sudo docker pull istio/proxyv2:0.8.0
+sudo docker pull istio/proxy_debug:0.8.0
+sudo docker pull istio/pilot:0.8.0
+sudo docker pull istio/citadel:0.8.0
+sudo docker pull istio/sidecar_injector:0.8.0
 sudo docker pull istio/examples-helloworld-v1
 sudo docker pull istio/examples-helloworld-v2
 
